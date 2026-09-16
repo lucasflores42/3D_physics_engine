@@ -5,12 +5,14 @@ using Plots, LinearAlgebra, StaticArrays #, GLMakie
 # -----------------------------------------------------------------------------
 #                           Parameters
 # ----------------------------------------------------------------------------- 
-# 270 height and 480 width, total 129,600 pixels.
+# 256x256x256, total 16,777,216 voxels.
 const grid_size = 1.0
-const pixel_size_x = 480
-const pixel_size_y = 270 
-const box_size_x = pixel_size_x * grid_size
-const box_size_y = pixel_size_y * grid_size
+const voxel_size_x = 256
+const voxel_size_y = 256 
+const voxel_size_z = 256 
+const box_size_x = voxel_size_x * grid_size
+const box_size_y = voxel_size_y * grid_size
+const box_size_z = voxel_size_z * grid_size
 
 const tmax = 1000.0
 const dt = 0.01
@@ -37,159 +39,35 @@ function create_scene()
     softbodies = softbody_struct[]
 
     # boundary of world
-    for i in 1:pixel_size_x
-        for j in 1:pixel_size_y
+    for i in 1:voxel_size_x
+        for j in 1:voxel_size_y
+            for k in 1:voxel_size_z
 
-            if (i >= 1 && i <=5) || (i>=pixel_size_x-4 && i<=pixel_size_x) || (j>=1 && j<=5) || (j>=pixel_size_y-4 && j<=pixel_size_y)
+                if k == 1
 
-                pos_x = (i - 1) * grid_size + grid_size/2
-                pos_y = (j - 1) * grid_size + grid_size/2
+                    p = solid_struct(
+                        [i, j, k],           
+                        [0.0, 0.0, 0.0],     # velocity
+                        [0.0, 0.0, 0.0],     # acceleration
+                        grid_size/2,        # radius
+                        10000.0,            # mass
 
-                p = solid_struct(
-                    [pos_x, pos_y],           
-                    [0.0, 0.0],     # velocity
-                    [0.0, 0.0],     # acceleration
-                    grid_size/2,    # radius
-                    10000.0,      # mass
+                        0,              # rigidbody
+                        0,
 
-                    0,              # rigidbody
-                    0,
+                        0,              # active
+                        1,              # collision
+                        0,              # gravity
 
-                    0,              # active
-                    1,              # collision
-                    0,              # gravity
+                        "solid"         # material
+                    )
+                    push!(solid, p)
+                    push!(particles, p)
 
-                    "solid"         # material
-                )
-                push!(solid, p)
-                push!(particles, p)
-
-            end
-
-            u_left = 300
-            u_right = 350
-            u_bottom = 50
-            u_top = 150
-            u_thickness = 3
-            
-            if (i >= u_left && i <= u_left + u_thickness && j >= u_bottom && j <= u_top) ||      # Left wall
-            (i >= u_right - u_thickness && i <= u_right && j >= u_bottom && j <= u_top) ||       # Right wall
-            (i >= u_left && i <= u_right && j >= u_bottom && j <= u_bottom + u_thickness)      # Bottom wall
-            #(i >= u_left && i <= u_right && j >= u_top && j <= u_top + u_thickness)              # top wall
-
-                
-                pos_x = (i - 1) * grid_size + grid_size/2
-                pos_y = (j - 1) * grid_size + grid_size/2
-
-                p = solid_struct(
-                    [pos_x, pos_y],           
-                    [0.0, 0.0],     # velocity
-                    [0.0, 0.0],     # acceleration
-                    grid_size/2,    # radius
-                    1000000.0,      # mass
-
-                    0,              # rigidbody
-                    0,
-
-                    0,              # active
-                    1,              # collision
-                    0,              # gravity
-
-                    "solid"         # material
-                )
-                push!(solid, p)
-                push!(particles, p)
+                end
             end
         end
     end
-
-    # some liquid
-    for i in 1:0
-
-        x = 305 + 40*rand()
-        y = 60 + 200*rand()
-
-        p = liquid_struct(
-            [x, y],           
-            [0.0, 0.0],     # velocity
-            [0.0, 0.0],     # acceleration
-            grid_size/2,    # radius
-            0.1,            # mass
-
-            0,              # rigidbody
-            0,
-
-            1000.0,         # density
-            0.0,            # pressure
-
-            1,              # active 
-            1,              # collision
-            1,              # gravity
-            0,              # sph
-
-            "liquid"        
-        )
-        push!(liquid, p)
-        push!(particles, p)
-    end
-
-    # some gas
-    for i in 1:0
-
-        x = 325
-        y = 55 + 80*rand()
-
-        p = gas_struct(
-            [x, y],           
-            [0.0, 0.0],     # velocity
-            [0.0, 0.0],     # acceleration
-            grid_size/2,    # radius
-            0.1,            # mass
-
-            0,              # rigidbody
-            0,
-
-            1,              # active 
-            1,              # collision
-            1,              # gravity
-            0,              # sph
-
-            "gas"        
-        )
-        push!(gas, p)
-        push!(particles, p)
-    end
-
-    # some powder
-    for i in 1:0
-
-        x = (1/3)*box_size_x + rand() * (1/6)*(box_size_x - 2 * grid_size)
-        y = grid_size + rand() * (box_size_y - 2 * grid_size)
-
-        p = powder_struct(
-            [95,y],           
-            [0.0, 0.0],     # velocity
-            [0.0, 0.0],     # acceleration
-            grid_size/2,    # radius
-            10.0,            # mass
-
-            0,              # rigidbody
-            0,
-
-            1,              # active 
-            1,              # collision
-            1,              # gravity
-
-            "powder"        
-        )
-        push!(powder, p)
-        push!(particles, p)
-    end
-
-    create_cube!(particles, rigidbodies, 1, [100.0, 8.0], [0.0, 0.0], [0.0],15, 3)
-    create_cube!(particles, rigidbodies, 2, [100-6, 25.0], [0.0, 0.0], [0.0],2, 15)
-    
-    create_rope!(particles, softbodies, 1, [250.0, 180.0], 10, 0.1, grid_size)
 
     return particles, liquid, gas, powder, solid, rigidbodies, softbodies
 end
