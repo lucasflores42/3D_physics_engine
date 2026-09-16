@@ -19,7 +19,7 @@ Makie.inline!(false)   # forces GLMakie to open a real desktop window instead
 # ----------------------------------------------------------------------------
 # Build the initial simulation state, exactly like the non-interactive main()
 # ----------------------------------------------------------------------------
-particles, liquid, gas, powder, solid, rigidbodies, softbodies = create_scene()
+particles, liquid, liquid2, gas, powder, solid, rigidbodies, softbodies = create_scene()
 id_grid, cell_of_particle = init_grids(particles)
 
 # ----------------------------------------------------------------------------
@@ -54,8 +54,8 @@ material_grid_obs = Observable(build_material_grid(particles, id_grid))
 
 # Categorical color scale: index 0=white(empty), 1=brown(solid), 2=blue(liquid),
 # 3=gray(gas), 4=orange(powder) - matches material_code(...) in the engine.
-colors = cgrad([:white, :brown, :blue, :gray, :orange], 5, categorical=true)
-GLMakie.heatmap!(ax, material_grid_obs, colorrange = (0,4), colormap = colors)
+colors = cgrad([:white, :brown, :blue, :gray, :orange, :green], 6, categorical=true)
+GLMakie.heatmap!(ax, material_grid_obs, colorrange = (0,5), colormap = colors)
 
 # ----------------------------------------------------------------------------
 # Buttons - one per material, stacked in the left column (layout_botoes).
@@ -64,6 +64,7 @@ btn1 = Button(layout_botoes[1, 1], label = "Liquid", buttoncolor = :blue, labelc
 btn2 = Button(layout_botoes[2, 1], label = "Solid", buttoncolor = :brown, labelcolor = :white)
 btn3 = Button(layout_botoes[3, 1], label = "Gas", buttoncolor = :gray, labelcolor = :white)
 btn4 = Button(layout_botoes[4, 1], label = "Powder", buttoncolor = :orange, labelcolor = :white)
+btn5 = Button(layout_botoes[5, 1], label = "Liquid2", buttoncolor = :green, labelcolor = :white)
 
 # tipo_atual ("current type") tracks which material is selected right now.
 # 0 = nothing selected yet.
@@ -77,10 +78,11 @@ on(btn1.clicks) do _; tipo_atual[] = 1; end
 on(btn2.clicks) do _; tipo_atual[] = 2; end
 on(btn3.clicks) do _; tipo_atual[] = 3; end
 on(btn4.clicks) do _; tipo_atual[] = 4; end
+on(btn5.clicks) do _; tipo_atual[] = 5; end
 
 # Maps tipo_atual's numeric code to the actual material name string that
 # spawn_particle! expects.
-material_names = Dict(1 => "liquid", 2 => "solid", 3 => "gas", 4 => "powder")
+material_names = Dict(1 => "liquid", 2 => "solid", 3 => "gas", 4 => "powder", 5 => "liquid2")
 
 # Tracks whether the left mouse button is currently held down, so we can
 # support "click and drag to paint" instead of just single clicks.
@@ -105,7 +107,7 @@ function adicionar_particula_se_ativo()
             py = Int(floor(posicao[2]/grid_size)) + 1
 
             if 1 <= px <= pixel_size_x && 1 <= py <= pixel_size_y
-                spawn_particle!(particles, liquid, gas, powder, solid, id_grid, cell_of_particle,
+                spawn_particle!(particles, liquid, liquid2, gas, powder, solid, id_grid, cell_of_particle,
                                  px, py, material_names[tipo_atual[]])
             end
         end
@@ -147,7 +149,7 @@ t = 0.0
 step = 0
 @async begin
     while t < tmax && screen.window_open[]
-        step_time = @elapsed simulation_step(particles, liquid, gas, powder, solid, rigidbodies, softbodies, id_grid, cell_of_particle)
+        step_time = @elapsed simulation_step(particles, liquid, liquid2, gas, powder, solid, rigidbodies, softbodies, id_grid, cell_of_particle)
 
         global step += 1
 
@@ -157,7 +159,7 @@ step = 0
         end
 
         global t += dt
-        println("t = $(round(t, digits=2))s | step: $(round(step_time*1000, digits=2))ms | render: $(round(render_time*1000, digits=2))ms")
+        #println("t = $(round(t, digits=2))s | step: $(round(step_time*1000, digits=2))ms | render: $(round(render_time*1000, digits=2))ms")
 
         sleep(0.001)
         yield()

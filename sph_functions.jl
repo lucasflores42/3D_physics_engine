@@ -2,9 +2,7 @@
 #                           Parameters
 # ----------------------------------------------------------------------------- 
 const smoothing_length = 0.2
-const liquid_target_density = 0.4
-const liquid_stiff_coef = 0.1
-const liquid_viscosity_coef = 0.1
+const surface_tension = 0.15 
 const sph_cell_range = Int(ceil(3 * smoothing_length / grid_size))
  
  
@@ -33,6 +31,7 @@ function kernel_gradient(r, r_vec)
     end
 end
 
+
 function calculate_density_pressure!(p, particles, id_grid)
 
     p.density = 0.0
@@ -58,7 +57,7 @@ function calculate_density_pressure!(p, particles, id_grid)
         end
     end
 
-    p.pressure = liquid_stiff_coef * ((p.density/liquid_target_density)^7 - 1)
+    p.pressure = p.stiff_coef * ((p.density / p.target_density)^7 - 1)
 end
 
 function pressure_gradient(p, p2, r, r_vec)
@@ -70,6 +69,8 @@ function pressure_gradient(p, p2, r, r_vec)
     d2 = max(p2.density, 1.0)
 
     pressure_term = (p.pressure / d1^2 + p2.pressure / d2^2)
+    #pressure_term = (p.pressure / p.target_density^2) + (p2.pressure / p2.target_density^2)
+
     grad_pressure += p2.mass * pressure_term * kernel_grad
 
     return grad_pressure
@@ -92,6 +93,15 @@ function viscosity_laplacian(p, p2, r, r_vec)
     return laplacian_velocity
 end
 
+function surface_tension_force(p, p2, r, r_vec)
+
+    if p.color_id == p2.color_id
+        return @SVector zeros(2)    
+    end
+
+    kernel_grad = kernel_gradient(r, r_vec)
     
+    return -surface_tension * p2.mass * (1.0 / (p.density + p2.density)) * kernel_grad
+end
 
 

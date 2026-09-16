@@ -2,15 +2,19 @@
 #                           Parameters
 # -----------------------------------------------------------------------------
 const restitution_x = 0.5
-const restitution_y = 0.0
+const restitution_y = 0.3
+const restitution_angular = 0.5
 const collision_min_distance = grid_size #* sqrt(2)
+const max_velocity = 50.0
+const max_angular_velocity = 20.0
+const friction_coef = 0.3
 
 include("rigidbody_functions.jl")
 
 # -----------------------------------------------------------------------------
 #                           Calculate all collisions
 # -----------------------------------------------------------------------------
-function collision_physics!(particles, rigidbodies, id_grid)
+function collision_physics!(particles, rigidbodies, powder, liquid, gas, id_grid, cell_of_particle)
 
     n_particles = length(particles)
     pos_correction = [@SVector zeros(2) for _ in 1:n_particles]
@@ -23,6 +27,7 @@ function collision_physics!(particles, rigidbodies, id_grid)
     ω_correction  = zeros(n_rb)
     rb_contact_count = zeros(Int, n_rb)
 
+    pending_breaks = Tuple{rigidbody_struct, Tuple{Int,Int}}[]
     cells = keys(id_grid)
 
     for cell in cells
@@ -32,7 +37,7 @@ function collision_physics!(particles, rigidbodies, id_grid)
 
         for a in 1:length(cell_particles)
             for b in a+1:length(cell_particles)
-                resolve_pair!(particles, rigidbodies, cell_particles[a], cell_particles[b], pos_correction, vel_correction, contact_count, cm_correction, V_correction, ω_correction, rb_contact_count)
+                resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cell_of_particle, cell_particles[a], cell_particles[b], pos_correction, vel_correction, contact_count, cm_correction, V_correction, ω_correction, rb_contact_count, pending_breaks)
             end
         end
 
@@ -56,7 +61,7 @@ function collision_physics!(particles, rigidbodies, id_grid)
                         neighbor_particles = id_grid[(ni, nj)]
                         for a in cell_particles
                             for b in neighbor_particles
-                                resolve_pair!(particles, rigidbodies, a, b, pos_correction, vel_correction, contact_count, cm_correction, V_correction, ω_correction, rb_contact_count)
+                                resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cell_of_particle, a, b, pos_correction, vel_correction, contact_count, cm_correction, V_correction, ω_correction, rb_contact_count, pending_breaks)
                             end
                         end
                     end
@@ -69,7 +74,7 @@ function collision_physics!(particles, rigidbodies, id_grid)
         p = particles[i]
         if p.active == 1 && p.rigidbody == 0 && contact_count[i] > 0
             p.position = p.position + pos_correction[i]
-            p.velocity = p.velocity + vel_correction[i]
+            p.velocity = clamp_velocity(p.velocity + vel_correction[i], max_velocity)
         end
     end
 
@@ -77,19 +82,35 @@ function collision_physics!(particles, rigidbodies, id_grid)
         nc = max(rb_contact_count[rb.id], 1)
 
         rb.cm = rb.cm + cm_correction[rb.id] / nc
-        rb.V  = rb.V  + V_correction[rb.id] / nc
-        rb.ω  = SVector(rb.ω[1], rb.ω[2], rb.ω[3] + ω_correction[rb.id] / nc)
+        rb.V  = clamp_velocity(rb.V + V_correction[rb.id] / nc, max_velocity)
+        #rb.ω  = SVector(rb.ω[1], rb.ω[2], rb.ω[3] + ω_correction[rb.id] / nc)
+        rb.ω  = SVector(rb.ω[1], rb.ω[2], clamp_angular_velocity(rb.ω[3] + ω_correction[rb.id] / nc, max_angular_velocity))
 
         for idx in rb.particle_indices
             particles[idx].position = particles[idx].position + cm_correction[rb.id] / nc
         end
+    end
+
+    # only one break per rigidbody per frame
+    processed_rigidbody_ids = Set{Int}()
+    for (rb, broken_bond) in pending_breaks
+        if rb.id in processed_rigidbody_ids
+            continue
+        end
+        push!(processed_rigidbody_ids, rb.id)
+        split_rigidbody!(particles, rigidbodies, rb, broken_bond)
     end
 end
 
 # -----------------------------------------------------------------------------
 #                           Single resolve function — handles every pair type
 # -----------------------------------------------------------------------------
-function resolve_pair!(particles, rigidbodies, i, j, pos_correction, vel_correction, contact_count, cm_correction, V_correction, ω_correction, rb_contact_count)
+function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cell_of_particle, i, j, pos_correction, vel_correction, contact_count, cm_correction, V_correction, ω_correction, rb_contact_count, pending_breaks)
+
+    n_particles = length(pos_correction)  
+    if i > n_particles || j > n_particles
+        return   
+    end
 
     p1 = particles[i]
     p2 = particles[j]
@@ -97,12 +118,37 @@ function resolve_pair!(particles, rigidbodies, i, j, pos_correction, vel_correct
     if p1.active == 0 && p2.active == 0
         return
     end
+    if p1.collision == 0 || p2.collision == 0
+        return
+    end 
     if p1.rigidbody != 0 && p1.rigidbody == p2.rigidbody
         return   # same rigidbody, never self-collide
     end
     if p1.softbody != 0 && p1.softbody == p2.softbody
         return   # same softbody, handled by its own constraints
     end
+
+    if p1.material == "powder" && p2.material == "liquid"
+
+        new_gas = gas_struct(length(particles)+1, p1.position, SVector(rand(),0.0), @SVector(zeros(2)),
+                        grid_size/2, 0.1, 
+                        0, 0, 
+                        1, 1, 1, 1, 
+                        0, 300, "gas")
+        transform_particle!(particles, gas, id_grid, cell_of_particle, p1, p2, new_gas)
+        return
+    elseif p1.material == "liquid" && p2.material == "powder"
+
+        new_gas = gas_struct(length(particles)+1, p2.position, SVector(rand(),0.0), @SVector(zeros(2)),
+                        grid_size/2, 0.1, 
+                        0, 0, 
+                        1, 1, 1, 1, 
+                        0, 300, "gas")
+        transform_particle!(particles, gas, id_grid, cell_of_particle, p1, p2, new_gas)
+        return
+    end
+
+
     if p1.material == "liquid" && p2.material == "gas"
         return
     elseif p1.material == "gas" && p2.material == "liquid"
@@ -154,6 +200,20 @@ function resolve_pair!(particles, rigidbodies, i, j, pos_correction, vel_correct
         Δp1 = m1 * dv1
         Δp2 = m2 * dv2
 
+        # friction correction
+        tangent = SVector(-normal[2], normal[1])
+        v_rel = v1 - v2
+        vt = dot(v_rel, tangent)
+
+        jn = norm(Δp1)   # normal impulse magnitude, already mass-scaled
+        jt = -vt * (m1 * m2 / (m1 + m2))
+        jt = clamp(jt, -friction_coef * jn, friction_coef * jn)
+
+        friction_impulse = jt * tangent
+
+        Δp1 = Δp1 + friction_impulse
+        Δp2 = Δp2 - friction_impulse    
+
         r1_rel = p1.position - rb1.cm
         r2_rel = p2.position - rb2.cm
 
@@ -166,8 +226,8 @@ function resolve_pair!(particles, rigidbodies, i, j, pos_correction, vel_correct
         V_correction[rb1.id] = V_correction[rb1.id] + Δp1 / m1
         V_correction[rb2.id] = V_correction[rb2.id] + Δp2 / m2
 
-        ω_correction[rb1.id] += (r1_rel[1]*Δp1[2] - r1_rel[2]*Δp1[1]) / I1
-        ω_correction[rb2.id] += (r2_rel[1]*Δp2[2] - r2_rel[2]*Δp2[1]) / I2
+        ω_correction[rb1.id] += restitution_angular * (r1_rel[1]*Δp1[2] - r1_rel[2]*Δp1[1]) / I1
+        ω_correction[rb2.id] += restitution_angular * (r2_rel[1]*Δp2[2] - r2_rel[2]*Δp2[1]) / I2
 
     # ---- Case 2: only p1 is a rigidbody particle ----
     elseif p1.rigidbody != 0 && p2.rigidbody == 0
@@ -188,16 +248,47 @@ function resolve_pair!(particles, rigidbodies, i, j, pos_correction, vel_correct
 
         shift = overlap * normal * (m2 / total_mass)
         Δp1 = m1 * dv1
+
+        # friction correction
+        tangent = SVector(-normal[2], normal[1])
+        v_rel = v1 - v2
+        vt = dot(v_rel, tangent)
+
+        jn = norm(Δp1)
+        jt = -vt * (m1 * m2 / (m1 + m2))
+        jt = clamp(jt, -friction_coef * jn, friction_coef * jn)
+
+        friction_impulse = jt * tangent
+        Δp1 = Δp1 + friction_impulse
+
         r1_rel = p1.position - rb1.cm
         I1 = calculate_inertia(particles, rb1)
 
         cm_correction[rb1.id] = cm_correction[rb1.id] + shift
         V_correction[rb1.id] = V_correction[rb1.id] + Δp1 / m1
-        ω_correction[rb1.id] += (r1_rel[1]*Δp1[2] - r1_rel[2]*Δp1[1]) / I1
+        ω_correction[rb1.id] += restitution_angular * (r1_rel[1]*Δp1[2] - r1_rel[2]*Δp1[1]) / I1
 
         if p2.active == 1
             p2.position = p2.position - overlap * normal * (m1 / total_mass)
             p2.velocity = p2.velocity + dv2
+        end
+
+        if norm(p2.velocity) > rb1.break_threshold && p2.material == "powder"
+
+            # returns the positions within the rb1.bonds array where the predicate is true
+            idxs = findall(bond_tuple -> i in bond_tuple, rb1.bonds)
+   
+            if !isempty(idxs)
+                # deleta os bonds quebrados e adiciona à lista de pending_breaks
+                for k in sort(idxs, rev=true)
+                    the_bond1 = rb1.bonds[k]
+                    deleteat!(rb1.bonds, k)
+                    push!(pending_breaks, (rb1, the_bond1))
+                    erase_particle!(particles[i], id_grid, cell_of_particle)
+                    erase_particle!(particles[j], id_grid, cell_of_particle)
+                end
+                println("bonds broken: $(idxs)")
+            end
         end
 
     # ---- Case 3: only p2 is a rigidbody particle ----
@@ -224,12 +315,41 @@ function resolve_pair!(particles, rigidbodies, i, j, pos_correction, vel_correct
 
         shift = overlap * normal * (m1 / total_mass)
         Δp2 = m2 * dv2
+
+        # friction correction
+        tangent = SVector(-normal[2], normal[1])
+        v_rel = v1 - v2
+        vt = dot(v_rel, tangent)
+
+        jn = norm(Δp2)
+        jt = -vt * (m1 * m2 / (m1 + m2))
+        jt = clamp(jt, -friction_coef * jn, friction_coef * jn)
+
+        friction_impulse = jt * tangent
+        Δp2 = Δp2 - friction_impulse
+
         r2_rel = p2.position - rb2.cm
         I2 = calculate_inertia(particles, rb2)
 
         cm_correction[rb2.id] = cm_correction[rb2.id] - shift
         V_correction[rb2.id] = V_correction[rb2.id] + Δp2 / m2
-        ω_correction[rb2.id] += (r2_rel[1]*Δp2[2] - r2_rel[2]*Δp2[1]) / I2
+        ω_correction[rb2.id] += restitution_angular * (r2_rel[1]*Δp2[2] - r2_rel[2]*Δp2[1]) / I2
+
+        if norm(p1.velocity) > rb2.break_threshold && p1.material == "powder"
+            # j is the rb particle index
+            # array of indices of all bonds that include j
+            idxs = findall(bond_tuple -> j in bond_tuple, rb2.bonds)
+            if !isempty(idxs)
+                for k in sort(idxs, rev=true)
+                    the_bond2 = rb2.bonds[k]
+                    deleteat!(rb2.bonds, k)
+                    push!(pending_breaks, (rb2, the_bond2))
+                    erase_particle!(particles[j], id_grid, cell_of_particle)
+                    erase_particle!(particles[i], id_grid, cell_of_particle)
+                end
+                println("bonds broken: $(idxs)")
+            end
+        end
 
     # ---- Case 4: neither is a rigidbody — covers free particles AND softbody particles ----
     else
@@ -257,4 +377,45 @@ function resolve_pair!(particles, rigidbodies, i, j, pos_correction, vel_correct
             contact_count[j] += 1
         end
     end
+end
+
+function clamp_velocity(v, max_speed)
+    speed = norm(v)
+    if speed > max_speed
+        return v * (max_speed / speed)
+    end
+    return v
+end
+
+function clamp_angular_velocity(ω, max_ω)
+    if abs(ω) > max_ω
+        return sign(ω) * max_ω
+    end
+    return ω
+end
+
+function transform_particle!(particles, target_array, id_grid, cell_of_particle, p, p2, new_particle)
+
+    if p.active == 0 || p2.active == 0
+        return   # already transformed earlier this same scan
+    end
+
+    px = Int(floor(p.position[1] / grid_size)) + 1
+    py = Int(floor(p.position[2] / grid_size)) + 1
+
+    # remove p from its grid cell 
+    erase_particle!(p, id_grid, cell_of_particle)
+
+    # remove p2 from its grid cell 
+    erase_particle!(p2, id_grid, cell_of_particle)
+
+    # spawn the new gas particle
+    push!(target_array, new_particle)
+    push!(particles, new_particle)
+    push!(cell_of_particle, (px, py))
+
+    if !haskey(id_grid, (px, py))
+        id_grid[(px, py)] = Int[]
+    end
+    push!(id_grid[(px, py)], new_particle.id)
 end

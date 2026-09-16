@@ -18,11 +18,11 @@ function clamp_particles(particles)
     end
 end
 
-function material_code(material)
+function material_code(material, color_id=0)
     if material == "solid"
         return 1
     elseif material == "liquid"
-        return 2
+        return color_id == 2 ? 5 : 2
     elseif material == "gas"
         return 3
     elseif material == "powder"
@@ -31,7 +31,6 @@ function material_code(material)
         return 0
     end
 end
-
 function init_grids(particles)
     id_grid = Dict{Tuple{Int,Int}, Vector{Int}}()
     cell_of_particle = Vector{Tuple{Int,Int}}(undef, length(particles))
@@ -77,7 +76,7 @@ function update_grids!(particles, id_grid, cell_of_particle)
         end
 
         if p.collision == 1
-            if !haskey(id_grid, new_cell)
+            if !haskey(id_grid, new_cell) # If new_cell is not a key in id_grid...
                 id_grid[new_cell] = Int[]
             end
             push!(id_grid[new_cell], i)
@@ -100,6 +99,7 @@ function build_material_grid(particles, id_grid)
         end
 
         best_material = nothing
+        best_color_id = 0
         best_priority = typemax(Int)
 
         for i in ids
@@ -108,37 +108,55 @@ function build_material_grid(particles, id_grid)
             if pr < best_priority
                 best_priority = pr
                 best_material = p.material
+                best_color_id = p.material == "liquid" ? p.color_id : 0
             end
         end
 
         if best_material !== nothing
-            material_grid[px, py] = material_code(best_material)
+            material_grid[px, py] = material_code(best_material, best_color_id)
         end
     end
 
     return material_grid
-end 
+end
 
-function spawn_particle!(particles, liquid, gas, powder, solid, id_grid, cell_of_particle, px, py, material)
+function spawn_particle!(particles, liquid, liquid2, gas, powder, solid, id_grid, cell_of_particle, px, py, material)
 
     x = (px - 1) * grid_size + grid_size/2
     y = (py - 1) * grid_size + grid_size/2
 
     if material == "powder"
-        p = powder_struct(SVector(x,y), @SVector(zeros(2)), @SVector(zeros(2)),
+        p = powder_struct(length(particles)+1, SVector(x,y), SVector(0,-100), @SVector(zeros(2)),
                            grid_size/2, 10.0, 0, 0, 1, 1, 1, "powder")
         push!(powder, p)
     elseif material == "liquid"
-        p = liquid_struct(SVector(x,y), SVector(1*rand(),0.0), @SVector(zeros(2)),
-                           grid_size/2, 0.1, 0, 0, 1000, 0.0, 1, 1, 1, 1, "liquid")
+        p = liquid_struct(length(particles)+1, SVector(x,y), SVector(rand(),0), @SVector(zeros(2)),
+                    grid_size/2, 0.1, 0, 0,
+                    1000, 0.0, 1000, 50, 0.1,
+                    1, 1, 1, 1,
+                    1,                # color_id
+                    "liquid")
         push!(liquid, p)
+    elseif material == "liquid2"
+        p = liquid_struct(length(particles)+1, SVector(x,y), SVector(rand(),0), @SVector(zeros(2)),
+                    grid_size/2, 0.02, 0, 0,
+                    200, 0.0, 200, 50, 0.1,
+                    1, 1, 1, 1,
+                    2,                # color_id
+                    "liquid")
+        push!(liquid2, p)
     elseif material == "gas"
-        p = gas_struct(SVector(x,y), @SVector(zeros(2)), @SVector(zeros(2)),
-                        grid_size/2, 0.1, 0, 0, 1, 1, 1, 1, "gas")
+        p = gas_struct(length(particles)+1, SVector(x,y), SVector(rand(),0.0), @SVector(zeros(2)),
+                        grid_size/2, 0.1, 
+                        0, 0, 
+                        1, 1, 1, 1, 
+                        0, 300, "gas")
         push!(gas, p)
     elseif material == "solid"
-        p = solid_struct(SVector(x,y), @SVector(zeros(2)), @SVector(zeros(2)),
-                          grid_size/2, 1.0, 0, 0, 0, 1, 0, "solid")
+        p = solid_struct(length(particles)+1, SVector(x,y), @SVector(zeros(2)), @SVector(zeros(2)),
+                          grid_size/2, 1000000.0, 
+                          0, 0, 
+                          0, 1, 0, "solid")
         push!(solid, p)
     else
         return
