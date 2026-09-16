@@ -15,6 +15,14 @@ function clamp_particles(particles)
             p.position[2] = box_size - grid_size/2
             p.velocity[2] = -abs(p.velocity[2])  # Bounce back
         end
+
+        if p.position[3] < grid_size/2
+            p.position[3] = grid_size/2
+            p.velocity[3] = abs(p.velocity[3])  # Bounce back
+        elseif p.position[3] > box_size_z - grid_size/2
+            p.position[3] = box_size_z - grid_size/2
+            p.velocity[3] = -abs(p.velocity[3])  # Bounce back
+        end
     end
 end
 
@@ -32,20 +40,21 @@ function material_code(material, color_id=0)
     end
 end
 function init_grids(particles)
-    id_grid = Dict{Tuple{Int,Int}, Vector{Int}}()
+    id_grid = Dict{Tuple{Int,Int,Int}, Vector{Int}}()
     cell_of_particle = Vector{Tuple{Int,Int}}(undef, length(particles))
 
     for i in 1:length(particles)
         p = particles[i]
         px = Int(floor(p.position[1] / grid_size)) + 1
         py = Int(floor(p.position[2] / grid_size)) + 1
-        cell_of_particle[i] = (px, py)
+        pz = Int(floor(p.position[3] / grid_size)) + 1
+        cell_of_particle[i] = (px, py, pz)
 
-        if 1 <= px <= pixel_size_x && 1 <= py <= pixel_size_y && p.collision == 1
-            if !haskey(id_grid, (px, py))
-                id_grid[(px, py)] = Int[]
+        if 1 <= px <= pixel_size_x && 1 <= py <= pixel_size_y && 1 <= pz <= pixel_size_z && p.collision == 1
+            if !haskey(id_grid, (px, py, pz))
+                id_grid[(px, py, pz)] = Int[]
             end
-            push!(id_grid[(px, py)], i)
+            push!(id_grid[(px, py, pz)], i)
         end
     end
 
@@ -61,7 +70,8 @@ function update_grids!(particles, id_grid, cell_of_particle)
 
         px = Int(floor(p.position[1] / grid_size)) + 1
         py = Int(floor(p.position[2] / grid_size)) + 1
-        new_cell = (px, py)
+        pz = Int(floor(p.position[3] / grid_size)) + 1
+        new_cell = (px, py, pz)
         old_cell = cell_of_particle[i]
 
         if new_cell == old_cell
@@ -89,12 +99,12 @@ end
 const material_priority = Dict("solid" => 1, "powder" => 2, "liquid" => 3, "gas" => 4)
 
 function build_material_grid(particles, id_grid)
-    material_grid = zeros(Int, pixel_size_x, pixel_size_y)
+    material_grid = zeros(Int, pixel_size_x, pixel_size_y, pixel_size_z)
 
     for (cell, ids) in id_grid
-        px, py = cell
+        px, py, pz = cell
 
-        if px < 1 || px > pixel_size_x || py < 1 || py > pixel_size_y
+        if px < 1 || px > pixel_size_x || py < 1 || py > pixel_size_y || pz < 1 || pz > pixel_size_z
             continue
         end
 
@@ -113,64 +123,9 @@ function build_material_grid(particles, id_grid)
         end
 
         if best_material !== nothing
-            material_grid[px, py] = material_code(best_material, best_color_id)
+            material_grid[px, py, pz] = material_code(best_material, best_color_id)
         end
     end
 
     return material_grid
-end
-
-function spawn_particle!(particles, liquid, liquid2, gas, powder, solid, id_grid, cell_of_particle, px, py, material)
-
-    x = (px - 1) * grid_size + grid_size/2
-    y = (py - 1) * grid_size + grid_size/2
-
-    if material == "powder"
-        p = powder_struct(length(particles)+1, SVector(x,y), SVector(0,-100), @SVector(zeros(2)),
-                           grid_size/2, 10.0, 0, 0, 1, 1, 1, "powder")
-        push!(powder, p)
-    elseif material == "liquid"
-        p = liquid_struct(length(particles)+1, SVector(x,y), SVector(rand(),0), @SVector(zeros(2)),
-                    grid_size/2, 0.1, 0, 0,
-                    1000, 0.0, 1000, 50, 0.1,
-                    1, 1, 1, 1,
-                    1,                # color_id
-                    "liquid")
-        push!(liquid, p)
-    elseif material == "liquid2"
-        p = liquid_struct(length(particles)+1, SVector(x,y), SVector(rand(),0), @SVector(zeros(2)),
-                    grid_size/2, 0.02, 0, 0,
-                    200, 0.0, 200, 50, 0.1,
-                    1, 1, 1, 1,
-                    2,                # color_id
-                    "liquid")
-        push!(liquid2, p)
-    elseif material == "gas"
-        p = gas_struct(length(particles)+1, SVector(x,y), SVector(rand(),0.0), @SVector(zeros(2)),
-                        grid_size/2, 0.1, 
-                        0, 0, 
-                        1, 1, 1, 1, 
-                        0, 300, "gas")
-        push!(gas, p)
-    elseif material == "solid"
-        p = solid_struct(length(particles)+1, SVector(x,y), @SVector(zeros(2)), @SVector(zeros(2)),
-                          grid_size/2, 1000000.0, 
-                          0, 0, 
-                          0, 1, 0, "solid")
-        push!(solid, p)
-    else
-        return
-    end
-
-    push!(particles, p)
-    i = length(particles)
-
-    push!(cell_of_particle, (px, py))
-
-    if p.collision == 1
-        if !haskey(id_grid, (px, py))
-            id_grid[(px, py)] = Int[]
-        end
-        push!(id_grid[(px, py)], i)
-    end
 end

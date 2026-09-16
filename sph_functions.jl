@@ -6,7 +6,7 @@ const surface_tension = 0.15
 const sph_cell_range = Int(ceil(3 * smoothing_length / grid_size))
  
  
- function kernel(r)
+function kernel(r)
     q = r / smoothing_length
     if q <= 1.0
         return (1.0 - 1.5*q*q + 0.75*q*q*q) / (π * smoothing_length^2)
@@ -27,10 +27,9 @@ function kernel_gradient(r, r_vec)
         factor = -0.75 * (2.0 - q)^2 / (π * smoothing_length^4 * q)
         return factor * r_vec
     else
-        return @SVector zeros(2)
+        return @SVector zeros(3)
     end
 end
-
 
 function calculate_density_pressure!(p, particles, id_grid)
 
@@ -38,16 +37,18 @@ function calculate_density_pressure!(p, particles, id_grid)
 
     px = Int(floor(p.position[1] / grid_size)) + 1
     py = Int(floor(p.position[2] / grid_size)) + 1
+    pz = Int(floor(p.position[3] / grid_size)) + 1
 
     for di in -sph_cell_range:sph_cell_range
         for dj in -sph_cell_range:sph_cell_range
-            ni, nj = px + di, py + dj
-            if ni < 1 || ni > pixel_size_x || nj < 1 || nj > pixel_size_y || !haskey(id_grid, (ni, nj))
-                continue
-            end
-            for j in id_grid[(ni, nj)]
-                p2 = particles[j]
-                if p2.material != "liquid"
+            for dk in -sph_cell_range:sph_cell_range
+                ni, nj, nk = px + di, py + dj, pz + dk
+                if ni < 1 || ni > pixel_size_x || nj < 1 || nj > pixel_size_y || nk < 1 || nk > pixel_size_z || !haskey(id_grid, (ni, nj, nk))
+                    continue
+                end
+                for j in id_grid[(ni, nj, nk)]
+                    p2 = particles[j]
+                    if p2.material != "liquid"
                     continue
                 end
                 r_vec = p.position - p2.position
@@ -63,7 +64,7 @@ end
 function pressure_gradient(p, p2, r, r_vec)
 
     kernel_grad = kernel_gradient(r, r_vec)
-    grad_pressure = @SVector zeros(2)
+    grad_pressure = @SVector zeros(3)
 
     d1 = max(p.density, 1.0)
     d2 = max(p2.density, 1.0)
@@ -80,7 +81,7 @@ function viscosity_laplacian(p, p2, r, r_vec)
 
     kernel_grad = kernel_gradient(r, r_vec)
 
-    laplacian_velocity = @SVector zeros(2)
+    laplacian_velocity = @SVector zeros(3)
     v_ij = p.velocity - p2.velocity
     dot_r_grad = dot(r_vec, kernel_grad)
     denominator = dot(r_vec, r_vec) + 0.01 * smoothing_length^2
@@ -96,12 +97,10 @@ end
 function surface_tension_force(p, p2, r, r_vec)
 
     if p.color_id == p2.color_id
-        return @SVector zeros(2)    
+        return @SVector zeros(3)    
     end
 
     kernel_grad = kernel_gradient(r, r_vec)
     
     return -surface_tension * p2.mass * (1.0 / (p.density + p2.density)) * kernel_grad
 end
-
-

@@ -2,7 +2,8 @@
 #                           Parameters
 # -----------------------------------------------------------------------------
 const restitution_x = 0.5
-const restitution_y = 0.3
+const restitution_y = 0.5
+const restitution_z = 0.3
 const restitution_angular = 0.5
 const collision_min_distance = grid_size #* sqrt(2)
 const max_velocity = 50.0
@@ -17,13 +18,13 @@ include("rigidbody_functions.jl")
 function collision_physics!(particles, rigidbodies, powder, liquid, gas, id_grid, cell_of_particle)
 
     n_particles = length(particles)
-    pos_correction = [@SVector zeros(2) for _ in 1:n_particles]
-    vel_correction = [@SVector zeros(2) for _ in 1:n_particles]
+    pos_correction = [@SVector zeros(3) for _ in 1:n_particles]
+    vel_correction = [@SVector zeros(3) for _ in 1:n_particles]
     contact_count = zeros(Int, n_particles)
 
     n_rb = length(rigidbodies)
-    cm_correction = [@SVector zeros(2) for _ in 1:n_rb]
-    V_correction  = [@SVector zeros(2) for _ in 1:n_rb]
+    cm_correction = [@SVector zeros(3) for _ in 1:n_rb]
+    V_correction  = [@SVector zeros(3) for _ in 1:n_rb]
     ω_correction  = zeros(n_rb)
     rb_contact_count = zeros(Int, n_rb)
 
@@ -32,7 +33,7 @@ function collision_physics!(particles, rigidbodies, powder, liquid, gas, id_grid
 
     for cell in cells
 
-        i, j = cell
+        i, j, k = cell
         cell_particles = id_grid[cell]
 
         for a in 1:length(cell_particles)

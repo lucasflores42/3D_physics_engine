@@ -19,7 +19,7 @@ function softbody_physics(particles, softbodies)
             idx = sb.particle_indices[k]
             p = particles[idx]
 
-            F_gravity = SVector(0.0, -10.0) * p.mass
+            F_gravity = SVector(0.0, 0.0, -10.0) * p.mass
             p.velocity = p.velocity + (F_gravity / p.mass) * dt
             p.position = p.position + p.velocity * dt
         end
@@ -54,7 +54,7 @@ function create_rope!(particles, softbodies, id, offset, n, stiffness, rest_leng
     for k in 0:(n-1)
         p = solid_struct(
             length(particles)+1,
-            offset .+ SVector(-k*rest_length, 0),
+            offset .+ SVector(-k*rest_length, 0, 0),
             @SVector(zeros(2)),
             @SVector(zeros(2)),
             grid_size/2,
@@ -85,9 +85,9 @@ function create_rope2!(particles, softbodies, id, offset, n, stiffness, rest_len
     for k in 0:(n-1)
         p = solid_struct(
             length(particles)+1,
-            offset .+ SVector(-k*rest_length, 0),
-            @SVector(zeros(2)),
-            @SVector(zeros(2)),
+            offset .+ SVector(-k*rest_length, 0, 0),
+            @SVector(zeros(3)),
+            @SVector(zeros(3)),
             grid_size/2,
             1.0,
             0,

@@ -69,6 +69,25 @@ function create_scene()
         end
     end
 
+    # some liquid
+    for i in 1:10
+
+        x = 325
+        y = 55 + 10*rand()
+        z = 55 + 10*rand()
+
+        p = liquid_struct(length(particles)+1, SVector(x,y,z), @SVector(zeros(3)), @SVector(zeros(3)),
+                       grid_size/2, 0.1, 0, 0,
+                       0.4, 0.0, 0.4, 0.1, 0.1,   # density, pressure, target_density, stiff_coef, viscosity_coef
+                       1, 1, 1, 1, 
+                       1, "liquid")
+        push!(liquid, p)
+        push!(particles, p)
+    end
+
+    create_sphere!(particles, rigidbodies, 4, [40.0, 100.0, 100.0], [0.0, 10.0, 0.0], [0.0, 0.0, 0.0], 10)
+    create_sphere!(particles, rigidbodies, 5, [160.0, 100.0, 100.0], [0.0, -10.0, 0.0], [0.0, 0.0, 0.0], 10)
+
     return particles, liquid, gas, powder, solid, rigidbodies, softbodies
 end
 
@@ -77,11 +96,11 @@ end
 # ----------------------------------------------------------------------------- 
 function simulation_step(particles, liquid, gas, powder, solid, rigidbodies, softbodies, id_grid, cell_of_particle)
 
-    particle_physics(particles, liquid, gas, powder, solid, id_grid)
+    particle_physics(particles, liquid, gas, powder, solid, id_grid, cell_of_particle)
     rigidbody_physics(particles, rigidbodies)
     softbody_physics(particles, softbodies)
 
-    collision_physics!(particles, rigidbodies, id_grid)
+    collision_physics!(particles, rigidbodies, powder, liquid, gas, id_grid, cell_of_particle)
 
     update_grids!(particles, id_grid, cell_of_particle)
 end
@@ -132,4 +151,4 @@ function main()
     end
 end
 
-#main()
+main()

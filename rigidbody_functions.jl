@@ -4,8 +4,8 @@
 mutable struct rigidbody_struct
     id::Int
     particle_indices::Vector{Int}
-    cm::SVector{2, Float64}
-    V::SVector{2, Float64}
+    cm::SVector{3, Float64}
+    V::SVector{3, Float64}
     ω::SVector{3, Float64}
     M::Float64
     bonds::Vector{Tuple{Int,Int}}   
@@ -17,7 +17,7 @@ function rigidbody_physics(particles, rigidbodies)
     for rb in rigidbodies
 
         # translation
-        #F_gravity = @SVector zeros(2)
+        #F_gravity = @SVector zeros(3)
         F_gravity = calculate_gravity(rb.cm, rb.M, 0, nothing)
 
         rb.V += (F_gravity / rb.M) * dt      
