@@ -24,7 +24,7 @@ function collision_physics!(particles, rigidbodies, powder, liquid, gas, id_grid
     n_rb = length(rigidbodies)
     cm_correction = [@SVector zeros(3) for _ in 1:n_rb]
     V_correction  = [@SVector zeros(3) for _ in 1:n_rb]
-    ω_correction  = zeros(n_rb)
+    ω_correction  = [@SVector zeros(3) for _ in 1:n_rb]
     rb_contact_count = zeros(Int, n_rb)
 
     pending_breaks = Tuple{rigidbody_struct, Tuple{Int,Int}}[]
@@ -43,25 +43,26 @@ function collision_physics!(particles, rigidbodies, powder, liquid, gas, id_grid
 
         for di in -1:1
             for dj in -1:1
-                if di == 0 && dj == 0
-                    continue
-                end
-                if di < 0
-                    continue
-                end
-                if di == 0 && dj < 0
-                    continue
-                end
+                for dk in -1:1
+                    if di == 0 && dj == 0 && dk == 0
+                        continue
+                    end
 
-                ni = i + di
-                nj = j + dj
+                    ni = i + di
+                    nj = j + dj
+                    nk = k + dk
 
-                if ni >= 1 && ni <= pixel_size_x && nj >= 1 && nj <= pixel_size_y
-                    if haskey(id_grid, (ni, nj))
-                        neighbor_particles = id_grid[(ni, nj)]
-                        for a in cell_particles
-                            for b in neighbor_particles
-                                resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cell_of_particle, a, b, pos_correction, vel_correction, contact_count, cm_correction, V_correction, ω_correction, rb_contact_count, pending_breaks)
+                    if ni >= 1 && ni <= voxel_size_x && nj >= 1 && nj <= voxel_size_y && nk >= 1 && nk <= voxel_size_z
+                        neighbor_key = (ni, nj, nk)
+                        if haskey(id_grid, neighbor_key)
+                            neighbor_particles = id_grid[neighbor_key]
+                            for a in cell_particles
+                                for b in neighbor_particles
+                                    if a == b
+                                        continue
+                                    end
+                                    resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cell_of_particle, a, b, pos_correction, vel_correction, contact_count, cm_correction, V_correction, ω_correction, rb_contact_count, pending_breaks)
+                                end
                             end
                         end
                     end
@@ -83,8 +84,7 @@ function collision_physics!(particles, rigidbodies, powder, liquid, gas, id_grid
 
         rb.cm = rb.cm + cm_correction[rb.id] / nc
         rb.V  = clamp_velocity(rb.V + V_correction[rb.id] / nc, max_velocity)
-        #rb.ω  = SVector(rb.ω[1], rb.ω[2], rb.ω[3] + ω_correction[rb.id] / nc)
-        rb.ω  = SVector(rb.ω[1], rb.ω[2], clamp_angular_velocity(rb.ω[3] + ω_correction[rb.id] / nc, max_angular_velocity))
+        rb.ω  = clamp_angular_velocity_vector(rb.ω + ω_correction[rb.id] / nc, max_angular_velocity)
 
         for idx in rb.particle_indices
             particles[idx].position = particles[idx].position + cm_correction[rb.id] / nc
@@ -148,8 +148,10 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
     end
 
     overlap = collision_min_distance - r
-    x1, x2, x3 = p1.position, p2.position, p3.position
-    v1, v2, v3 = p1.velocity, p2.velocity, p3.velocity
+    x1 = p1.position
+    x2 = p2.position
+    v1 = p1.velocity
+    v2 = p2.velocity
     normal = (x1 - x2) / r
     r_sq = r^2
 
@@ -359,9 +361,10 @@ function clamp_velocity(v, max_speed)
     return v
 end
 
-function clamp_angular_velocity(ω, max_ω)
-    if abs(ω) > max_ω
-        return sign(ω) * max_ω
+function clamp_angular_velocity_vector(ω, max_ω)
+    ω_norm = norm(ω)
+    if ω_norm > max_ω
+        return (max_ω / ω_norm) * ω
     end
     return ω
 end

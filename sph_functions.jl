@@ -43,13 +43,14 @@ function calculate_density_pressure!(p, particles, id_grid)
         for dj in -sph_cell_range:sph_cell_range
             for dk in -sph_cell_range:sph_cell_range
                 ni, nj, nk = px + di, py + dj, pz + dk
-                if ni < 1 || ni > pixel_size_x || nj < 1 || nj > pixel_size_y || nk < 1 || nk > pixel_size_z || !haskey(id_grid, (ni, nj, nk))
+                if ni < 1 || ni > voxel_size_x || nj < 1 || nj > voxel_size_y || nk < 1 || nk > voxel_size_z || !haskey(id_grid, (ni, nj, nk))
                     continue
                 end
                 for j in id_grid[(ni, nj, nk)]
                     p2 = particles[j]
                     if p2.material != "liquid"
-                    continue
+                        continue
+                    end
                 end
                 r_vec = p.position - p2.position
                 r = norm(r_vec)

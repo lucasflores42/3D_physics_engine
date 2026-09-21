@@ -7,9 +7,9 @@ using Plots, LinearAlgebra, StaticArrays #, GLMakie
 # ----------------------------------------------------------------------------- 
 # 256x256x256, total 16,777,216 voxels.
 const grid_size = 1.0
-const voxel_size_x = 256
-const voxel_size_y = 256 
-const voxel_size_z = 256 
+const voxel_size_x = 100
+const voxel_size_y = 100 
+const voxel_size_z = 100 
 const box_size_x = voxel_size_x * grid_size
 const box_size_y = voxel_size_y * grid_size
 const box_size_z = voxel_size_z * grid_size
@@ -47,11 +47,12 @@ function create_scene()
                 if k == 1
 
                     p = solid_struct(
-                        [i, j, k],           
-                        [0.0, 0.0, 0.0],     # velocity
-                        [0.0, 0.0, 0.0],     # acceleration
-                        grid_size/2,        # radius
-                        10000.0,            # mass
+                        length(particles) + 1,
+                        SVector{3, Float64}(i, j, k),
+                        SVector{3, Float64}(0.0, 0.0, 0.0),
+                        SVector{3, Float64}(0.0, 0.0, 0.0),
+                        grid_size / 2,
+                        10000.0,
 
                         0,              # rigidbody
                         0,
@@ -86,8 +87,8 @@ function create_scene()
         push!(particles, p)
     end
 
-    create_sphere!(particles, rigidbodies, 4, [40.0, 100.0, 100.0], [0.0, 10.0, 0.0], [0.0, 0.0, 0.0], 10)
-    create_sphere!(particles, rigidbodies, 5, [160.0, 100.0, 100.0], [0.0, -10.0, 0.0], [0.0, 0.0, 0.0], 10)
+    create_sphere!(particles, rigidbodies, length(rigidbodies) + 1, [40.0, 100.0, 100.0], [0.0, 10.0, 0.0], [0.0, 0.0, 0.0], 10)
+    create_sphere!(particles, rigidbodies, length(rigidbodies) + 1, [160.0, 100.0, 100.0], [0.0, -10.0, 0.0], [0.0, 0.0, 0.0], 10)
 
     return particles, liquid, gas, powder, solid, rigidbodies, softbodies
 end
@@ -113,13 +114,55 @@ function visualization(particles, id_grid, step)
 
     material_grid = build_material_grid(particles, id_grid)
 
-    colors = cgrad([:white, :brown, :blue, :gray, :orange], 5, categorical=true)
+    xs = Int[]
+    ys = Int[]
+    zs = Int[]
+    cs = Symbol[]
 
-    plt = heatmap(material_grid', color=colors, clims=(0,4),
-                  xlim=(0, box_size_x), ylim=(0, box_size_y),
-                  title="Time $(round(step, digits=2))s",
-                  xlabel="X", ylabel="Y",
-                  size=(1920, 1080), aspect_ratio=:equal, legend=false)
+    for x in 1:voxel_size_x
+        for y in 1:voxel_size_y
+            for z in 1:voxel_size_z
+                v = material_grid[x, y, z]
+                if v == 0
+                    continue
+                end
+
+                push!(xs, x)
+                push!(ys, y)
+                push!(zs, z)
+
+                color = if v == 1
+                    :gray
+                elseif v == 2
+                    :blue
+                elseif v == 3
+                    :orange
+                elseif v == 4
+                    :brown
+                elseif v == 5
+                    :lightblue
+                else
+                    :white
+                end
+
+                push!(cs, color)
+            end
+        end
+    end
+
+    plt = scatter3d(
+        xs, ys, zs;
+        markercolor = cs,
+        markersize = 1.5,
+        xlabel = "X", ylabel = "Y", zlabel = "Z",
+        title = "Time $(round(step, digits=2))s",
+        xlim = (0, voxel_size_x),
+        ylim = (0, voxel_size_y),
+        zlim = (0, voxel_size_z),
+        aspect_ratio = :equal,
+        camera = (30, 35),
+        legend = false
+    )
 
     return plt
 end
@@ -128,27 +171,31 @@ end
 #                           Main Simulation
 # ----------------------------------------------------------------------------- 
 function main()
-
     t = 0.0
     step = 0
+
     particles, liquid, gas, powder, solid, rigidbodies, softbodies = create_scene()
     id_grid, cell_of_particle = init_grids(particles)
 
     while t < tmax
-
         step += 1
 
-        if step % 10 == 0
-            print("time of plot:")
-            plt = @time visualization(particles, id_grid, t)
-            print("time of display:")
-            @time display(plt)
-        end
-        print("time of step:")
-        @time simulation_step(particles, liquid, gas, powder, solid, rigidbodies, softbodies, id_grid, cell_of_particle)
-        t += dt
+        step_time = @elapsed simulation_step(
+            particles, liquid, gas, powder, solid, rigidbodies, softbodies,
+            id_grid, cell_of_particle
+        )
 
-        println()
+        if step % 10 == 0
+            render_time = @elapsed begin
+                plt = visualization(particles, id_grid, t)
+                display(plt)
+            end
+            println("t = $(round(t, digits=2))s | step: $(round(step_time * 1000, digits=2))ms | render: $(round(render_time * 1000, digits=2))ms")
+        else
+            println("t = $(round(t, digits=2))s | step: $(round(step_time * 1000, digits=2))ms")
+        end
+
+        t += dt
     end
 end
 

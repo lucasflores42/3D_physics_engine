@@ -41,7 +41,7 @@ function material_code(material, color_id=0)
 end
 function init_grids(particles)
     id_grid = Dict{Tuple{Int,Int,Int}, Vector{Int}}()
-    cell_of_particle = Vector{Tuple{Int,Int}}(undef, length(particles))
+    cell_of_particle = Vector{Tuple{Int,Int,Int}}(undef, length(particles))
 
     for i in 1:length(particles)
         p = particles[i]
@@ -50,7 +50,7 @@ function init_grids(particles)
         pz = Int(floor(p.position[3] / grid_size)) + 1
         cell_of_particle[i] = (px, py, pz)
 
-        if 1 <= px <= pixel_size_x && 1 <= py <= pixel_size_y && 1 <= pz <= pixel_size_z && p.collision == 1
+        if 1 <= px <= voxel_size_x && 1 <= py <= voxel_size_y && 1 <= pz <= voxel_size_z && p.collision == 1
             if !haskey(id_grid, (px, py, pz))
                 id_grid[(px, py, pz)] = Int[]
             end
@@ -99,12 +99,12 @@ end
 const material_priority = Dict("solid" => 1, "powder" => 2, "liquid" => 3, "gas" => 4)
 
 function build_material_grid(particles, id_grid)
-    material_grid = zeros(Int, pixel_size_x, pixel_size_y, pixel_size_z)
+    material_grid = zeros(Int, voxel_size_x, voxel_size_y, voxel_size_z)
 
     for (cell, ids) in id_grid
         px, py, pz = cell
 
-        if px < 1 || px > pixel_size_x || py < 1 || py > pixel_size_y || pz < 1 || pz > pixel_size_z
+        if px < 1 || px > voxel_size_x || py < 1 || py > voxel_size_y || pz < 1 || pz > voxel_size_z
             continue
         end
 
