@@ -1,9 +1,7 @@
 # -----------------------------------------------------------------------------
 #                           Parameters
 # -----------------------------------------------------------------------------
-const restitution_x = 0.5
-const restitution_y = 0.5
-const restitution_z = 0.3
+const restitution = [0.5, 0.5, 0.3]
 const restitution_angular = 0.5
 const collision_min_distance = grid_size #* sqrt(2)
 const max_velocity = 50.0
@@ -11,6 +9,7 @@ const max_angular_velocity = 20.0
 const friction_coef = 0.3
 
 include("rigidbody_functions.jl")
+include("material_functions.jl")
 
 # -----------------------------------------------------------------------------
 #                           Calculate all collisions
@@ -129,26 +128,7 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
         return   # same softbody, handled by its own constraints
     end
 
-    if p1.material == "powder" && p2.material == "liquid"
-
-        new_gas = gas_struct(length(particles)+1, p1.position, SVector(rand(),0.0), @SVector(zeros(2)),
-                        grid_size/2, 0.1, 
-                        0, 0, 
-                        1, 1, 1, 1, 
-                        0, 300, "gas")
-        transform_particle!(particles, gas, id_grid, cell_of_particle, p1, p2, new_gas)
-        return
-    elseif p1.material == "liquid" && p2.material == "powder"
-
-        new_gas = gas_struct(length(particles)+1, p2.position, SVector(rand(),0.0), @SVector(zeros(2)),
-                        grid_size/2, 0.1, 
-                        0, 0, 
-                        1, 1, 1, 1, 
-                        0, 300, "gas")
-        transform_particle!(particles, gas, id_grid, cell_of_particle, p1, p2, new_gas)
-        return
-    end
-
+    material_transformation(p1,p2)
 
     if p1.material == "liquid" && p2.material == "gas"
         return
@@ -168,8 +148,8 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
     end
 
     overlap = collision_min_distance - r
-    x1, x2 = p1.position, p2.position
-    v1, v2 = p1.velocity, p2.velocity
+    x1, x2, x3 = p1.position, p2.position, p3.position
+    v1, v2, v3 = p1.velocity, p2.velocity, p3.velocity
     normal = (x1 - x2) / r
     r_sq = r^2
 
@@ -183,17 +163,9 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
 
         rb_contact_count[rb1.id] += 1
         rb_contact_count[rb2.id] += 1
-
-        #dv1 = - (1 + colision_restitution_coefficient) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1 - x2) / r_sq
-        #dv2 = - (1 + colision_restitution_coefficient) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2 - x1) / r_sq
-
-        dv1_x = - (1 + restitution_x) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1[1] - x2[1]) / r_sq
-        dv1_y = - (1 + restitution_y) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1[2] - x2[2]) / r_sq
-        dv1 = [dv1_x, dv1_y]
-        
-        dv2_x = - (1 + restitution_x) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2[1] - x1[1]) / r_sq
-        dv2_y = - (1 + restitution_y) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2[2] - x1[2]) / r_sq
-        dv2 = [dv2_x, dv2_y]
+   
+        dv1 = (1 + restitution) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1 - x2) / r_sq
+        dv2 = - (1 + restitution) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2 - x1) / r_sq
 
         shift1 = overlap * normal * (m2 / total_mass)
         shift2 = overlap * normal * (m1 / total_mass)
@@ -202,11 +174,14 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
         Δp2 = m2 * dv2
 
         # friction correction
-        tangent = SVector(-normal[2], normal[1])
+        a = abs(normal[1]) < 0.9 ? SVector(1.0, 0.0, 0.0) : SVector(0.0, 1.0, 0.0)  # choose a direction not parallel to n
+
+        tangent = normalize(cross(a, normal))  # tangent direction in the plane perpendicular to n
+
         v_rel = v1 - v2
         vt = dot(v_rel, tangent)
 
-        jn = norm(Δp1)   # normal impulse magnitude, already mass-scaled
+        jn = norm(Δp1)
         jt = -vt * (m1 * m2 / (m1 + m2))
         jt = clamp(jt, -friction_coef * jn, friction_coef * jn)
 
@@ -218,8 +193,12 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
         r1_rel = p1.position - rb1.cm
         r2_rel = p2.position - rb2.cm
 
-        I1 = calculate_inertia(particles, rb1)
-        I2 = calculate_inertia(particles, rb2)
+        I1 = calculate_inertia_tensor(particles, rb1)
+        I2 = calculate_inertia_tensor(particles, rb2)
+        invI1 = inv(I1)
+        invI2 = inv(I2)
+        tau1 = cross(r1_rel, Δp1)
+        tau2 = cross(r2_rel, Δp2)
 
         cm_correction[rb1.id] = cm_correction[rb1.id] + shift1
         cm_correction[rb2.id] = cm_correction[rb2.id] - shift2
@@ -227,8 +206,9 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
         V_correction[rb1.id] = V_correction[rb1.id] + Δp1 / m1
         V_correction[rb2.id] = V_correction[rb2.id] + Δp2 / m2
 
-        ω_correction[rb1.id] += restitution_angular * (r1_rel[1]*Δp1[2] - r1_rel[2]*Δp1[1]) / I1
-        ω_correction[rb2.id] += restitution_angular * (r2_rel[1]*Δp2[2] - r2_rel[2]*Δp2[1]) / I2
+        # ω = I⁻¹ * (r × Δp)
+        ω_correction[rb1.id] += restitution_angular * (invI1 * tau1)
+        ω_correction[rb2.id] += restitution_angular * (invI2 * tau2)
 
     # ---- Case 2: only p1 is a rigidbody particle ----
     elseif p1.rigidbody != 0 && p2.rigidbody == 0
@@ -239,19 +219,15 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
 
         rb_contact_count[rb1.id] += 1
 
-        dv1_x = - (1 + restitution_x) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1[1] - x2[1]) / r_sq
-        dv1_y = - (1 + restitution_y) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1[2] - x2[2]) / r_sq
-        dv1 = [dv1_x, dv1_y]
-        
-        dv2_x = - (1 + restitution_x) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2[1] - x1[1]) / r_sq
-        dv2_y = - (1 + restitution_y) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2[2] - x1[2]) / r_sq
-        dv2 = [dv2_x, dv2_y]
+        dv1 = (1 + restitution) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1 - x2) / r_sq
+        dv2 = - (1 + restitution) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2 - x1) / r_sq
 
         shift = overlap * normal * (m2 / total_mass)
         Δp1 = m1 * dv1
 
         # friction correction
-        tangent = SVector(-normal[2], normal[1])
+        a = abs(normal[1]) < 0.9 ? SVector(1.0, 0.0, 0.0) : SVector(0.0, 1.0, 0.0)  
+        tangent = normalize(cross(a, normal))
         v_rel = v1 - v2
         vt = dot(v_rel, tangent)
 
@@ -264,10 +240,12 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
 
         r1_rel = p1.position - rb1.cm
         I1 = calculate_inertia(particles, rb1)
+        invI1 = inv(I1)
+        tau1 = cross(r1_rel, Δp1)
 
         cm_correction[rb1.id] = cm_correction[rb1.id] + shift
         V_correction[rb1.id] = V_correction[rb1.id] + Δp1 / m1
-        ω_correction[rb1.id] += restitution_angular * (r1_rel[1]*Δp1[2] - r1_rel[2]*Δp1[1]) / I1
+        ω_correction[rb1.id] += restitution_angular * (invI1 * tau1)
 
         if p2.active == 1
             p2.position = p2.position - overlap * normal * (m1 / total_mass)
@@ -301,13 +279,8 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
 
         rb_contact_count[rb2.id] += 1
 
-        dv1_x = - (1 + restitution_x) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1[1] - x2[1]) / r_sq
-        dv1_y = - (1 + restitution_y) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1[2] - x2[2]) / r_sq
-        dv1 = [dv1_x, dv1_y]
-        
-        dv2_x = - (1 + restitution_x) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2[1] - x1[1]) / r_sq
-        dv2_y = - (1 + restitution_y) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2[2] - x1[2]) / r_sq
-        dv2 = [dv2_x, dv2_y]
+        dv1 = (1 + restitution) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1 - x2) / r_sq
+        dv2 = - (1 + restitution) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2 - x1) / r_sq
 
         if p1.active == 1
             p1.position = p1.position + overlap * normal * (m2 / total_mass)
@@ -318,7 +291,8 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
         Δp2 = m2 * dv2
 
         # friction correction
-        tangent = SVector(-normal[2], normal[1])
+        a = abs(normal[1]) < 0.9 ? SVector(1.0, 0.0, 0.0) : SVector(0.0, 1.0, 0.0)  
+        tangent = normalize(cross(a, normal)) 
         v_rel = v1 - v2
         vt = dot(v_rel, tangent)
 
@@ -331,10 +305,12 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
 
         r2_rel = p2.position - rb2.cm
         I2 = calculate_inertia(particles, rb2)
+        invI2 = inv(I2)
+        tau2 = cross(r2_rel, Δp2)
 
         cm_correction[rb2.id] = cm_correction[rb2.id] - shift
         V_correction[rb2.id] = V_correction[rb2.id] + Δp2 / m2
-        ω_correction[rb2.id] += restitution_angular * (r2_rel[1]*Δp2[2] - r2_rel[2]*Δp2[1]) / I2
+        ω_correction[rb2.id] += restitution_angular * (invI2 * tau2)
 
         if norm(p1.velocity) > rb2.break_threshold && p1.material == "powder"
             # j is the rb particle index
@@ -358,13 +334,8 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
         m1, m2 = p1.mass, p2.mass
         total_mass = m1 + m2
 
-        dv1_x = - (1 + restitution_x) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1[1] - x2[1]) / r_sq
-        dv1_y = - (1 + restitution_y) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1[2] - x2[2]) / r_sq
-        dv1 = [dv1_x, dv1_y]
-        
-        dv2_x = - (1 + restitution_x) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2[1] - x1[1]) / r_sq
-        dv2_y = - (1 + restitution_y) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2[2] - x1[2]) / r_sq
-        dv2 = [dv2_x, dv2_y]
+        dv1 = (1 + restitution) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1 - x2) / r_sq
+        dv2 = - (1 + restitution) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2 - x1) / r_sq
 
         if p1.active == 1
             pos_correction[i] = pos_correction[i] + overlap * normal * (m2 / total_mass)
@@ -403,6 +374,7 @@ function transform_particle!(particles, target_array, id_grid, cell_of_particle,
 
     px = Int(floor(p.position[1] / grid_size)) + 1
     py = Int(floor(p.position[2] / grid_size)) + 1
+    pz = Int(floor(p.position[3] / grid_size)) + 1
 
     # remove p from its grid cell 
     erase_particle!(p, id_grid, cell_of_particle)
@@ -413,10 +385,10 @@ function transform_particle!(particles, target_array, id_grid, cell_of_particle,
     # spawn the new gas particle
     push!(target_array, new_particle)
     push!(particles, new_particle)
-    push!(cell_of_particle, (px, py))
+    push!(cell_of_particle, (px, py, pz))
 
-    if !haskey(id_grid, (px, py))
-        id_grid[(px, py)] = Int[]
+    if !haskey(id_grid, (px, py, pz))
+        id_grid[(px, py, pz)] = Int[]
     end
-    push!(id_grid[(px, py)], new_particle.id)
+    push!(id_grid[(px, py, pz)], new_particle.id)
 end

@@ -24,22 +24,33 @@ function rigidbody_physics(particles, rigidbodies)
         translation = rb.V * dt
         new_cm = rb.cm + translation         
 
-        # rotation
-        angle = rb.ω[3] * dt
-        cos_a = cos(angle)
-        sin_a = sin(angle)
+        # rotation in 3D
+        ω = rb.ω
+        θ = norm(ω) * dt
+
+        if θ > 1e-12
+            axis = ω / norm(ω)
+
+            K = [
+                0.0    -axis[3]   axis[2];
+                axis[3]  0.0    -axis[1];
+                -axis[2] axis[1]  0.0
+            ]
+
+            # Rodrigues rotation
+            R = I + sin(θ) * K + (1 - cos(θ)) * (K * K)
+        else
+            R = Matrix{Float64}(I, 3, 3)
+        end
 
         for idx in rb.particle_indices
             p = particles[idx]
 
             r = p.position - rb.cm
-
-            r_rot = SVector(cos_a*r[1] - sin_a*r[2], sin_a*r[1] + cos_a*r[2])
+            r_rot = R * r
 
             p.position = new_cm + r_rot
-
-            r_new = p.position - new_cm
-            p.velocity = rb.V + SVector(-rb.ω[3]*r_new[2], rb.ω[3]*r_new[1])
+            p.velocity = rb.V + cross(rb.ω, p.position - new_cm)
         end
 
         rb.cm = new_cm
@@ -58,8 +69,8 @@ end
 
 function calculate_inertia_tensor(particles, rb)
 
-    I_tensor = zeros(2,2)
-    I3 = Matrix{Float64}(I, 2, 2)  # identity
+    I_tensor = zeros(3,3)
+    I3 = Matrix{Float64}(I, 3, 3)  # identity
 
     for i in rb.particle_indices
         
@@ -78,24 +89,28 @@ function calculate_center_of_mass(particles)
     total_mass = 0.0
     cm_x = 0.0
     cm_y = 0.0
+    cm_z = 0.0
     
     for p in particles
         total_mass += p.mass
         cm_x += p.mass * p.position[1]
         cm_y += p.mass * p.position[2]
+        cm_z += p.mass * p.position[3]
     end
     
-    return SVector(cm_x / total_mass, cm_y / total_mass), total_mass
+    return SVector(cm_x / total_mass, cm_y / total_mass, cm_z / total_mass), total_mass
 end
 
-function create_cube!(particles, rigidbodies, id, offset, v_init, ω_init, m, n)
+function create_cube!(particles, rigidbodies, id, offset, v_init, ω_init, m, n, l)
     particle_radius = grid_size/2
     particle_diam = 2 * particle_radius
 
-    positions = SVector{2,Float64}[]
-    for row in 0:(m-1)
-        for col in 0:(n-1)
-            push!(positions, SVector(col * particle_diam, row * particle_diam))
+    positions = SVector{3,Float64}[]
+    for x in 0:(m-1)
+        for y in 0:(n-1)
+            for z in 0:(l-1)
+                push!(positions, SVector(x * particle_diam, y * particle_diam, z * particle_diam))
+            end
         end
     end
 
@@ -105,8 +120,8 @@ function create_cube!(particles, rigidbodies, id, offset, v_init, ω_init, m, n)
         p = solid_struct(
             length(particles)+1,
             offset .+ pos,
-            @SVector(zeros(2)),
-            @SVector(zeros(2)),
+            @SVector(zeros(3)),
+            @SVector(zeros(3)),
             particle_radius,
             10.0,            # mass
             id,
@@ -127,7 +142,7 @@ function create_cube!(particles, rigidbodies, id, offset, v_init, ω_init, m, n)
     # Set initial velocities
     for i in indices
         r = particles[i].position - cm
-        particles[i].velocity = v_init + SVector(-ω_init[1]*r[2], ω_init[1]*r[1])
+        particles[i].velocity = v_init + cross(ω_init, r)
     end
 
     bonds = build_grid_bonds(positions, particle_diam, indices)
@@ -136,8 +151,8 @@ function create_cube!(particles, rigidbodies, id, offset, v_init, ω_init, m, n)
         id,
         indices, #global indices of particles in the rigidbody
         cm,
-        SVector(v_init[1], v_init[2]),
-        SVector(0.0, 0.0, ω_init[1]),
+        SVector(v_init[1], v_init[2], v_init[3]),
+        SVector(ω_init[1], ω_init[2], ω_init[3]),
         total_mass,
         bonds,
         10
@@ -149,11 +164,13 @@ function create_sphere!(particles, rigidbodies, id, offset, v_init, ω_init, r)
     particle_radius = grid_size/2
     particle_diam = 2 * particle_radius
 
-    positions = SVector{2,Float64}[]
-    for row in 0:(2*r)
-        for col in 0:(2*r)
-            if (row - r)^2 + (col - r)^2 >= r^2 - 10 && (row - r)^2 + (col - r)^2 <= r^2 + 10
-                push!(positions, SVector(col * particle_diam, row * particle_diam))
+    positions = SVector{3,Float64}[]
+    for x in 0:(2*r)
+        for y in 0:(2*r)
+            for z in 0:(2*r)
+                if (x - r)^2 + (y - r)^2 + (z - r)^2 >= r^2 - 10 && (x - r)^2 + (y - r)^2 + (z - r)^2 <= r^2 + 10
+                    push!(positions, SVector(x * particle_diam, y * particle_diam, z * particle_diam))
+                end
             end
         end
     end
@@ -164,8 +181,8 @@ function create_sphere!(particles, rigidbodies, id, offset, v_init, ω_init, r)
         p = solid_struct(
             length(particles)+1,
             offset .+ pos,
-            @SVector(zeros(2)),
-            @SVector(zeros(2)),
+            @SVector(zeros(3)),
+            @SVector(zeros(3)),
             particle_radius,
             10.0,            # mass
             id,
@@ -186,7 +203,7 @@ function create_sphere!(particles, rigidbodies, id, offset, v_init, ω_init, r)
     # Set initial velocities
     for i in indices
         r = particles[i].position - cm
-        particles[i].velocity = v_init + SVector(-ω_init[1]*r[2], ω_init[1]*r[1])
+        particles[i].velocity = v_init + cross(ω_init, r)
     end
 
     bonds = build_grid_bonds(positions, particle_diam, indices)
@@ -195,8 +212,8 @@ function create_sphere!(particles, rigidbodies, id, offset, v_init, ω_init, r)
         id,
         indices, #global indices of particles in the rigidbody
         cm,
-        SVector(v_init[1], v_init[2]),
-        SVector(0.0, 0.0, ω_init[1]),
+        SVector(v_init[1], v_init[2], v_init[3]),
+        SVector(ω_init[1], ω_init[2], ω_init[3]),
         total_mass,
         bonds,
         10

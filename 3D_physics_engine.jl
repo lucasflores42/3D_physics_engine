@@ -23,6 +23,7 @@ include("softbody_functions.jl")
 include("particle_functions.jl")
 include("collision_functions.jl")
 include("other_functions.jl")
+include("material_functions.jl")
 
 
 # -----------------------------------------------------------------------------
