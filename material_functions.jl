@@ -1,8 +1,9 @@
-function material_transformation(p1,p2)
+function material_transformation(p1, p2, particles, gas, id_grid, cell_of_particle)
+
 
     if p1.material == "powder" && p2.material == "liquid"
 
-        new_gas = gas_struct(length(particles)+1, p1.position, SVector(rand(),0.0), @SVector(zeros(2)),
+        new_gas = gas_struct(length(particles)+1, p1.position, SVector(rand(),0.0,0.0), @SVector(zeros(3)),
                         grid_size/2, 0.1, 
                         0, 0, 
                         1, 1, 1, 1, 
@@ -11,7 +12,7 @@ function material_transformation(p1,p2)
         return
     elseif p1.material == "liquid" && p2.material == "powder"
 
-        new_gas = gas_struct(length(particles)+1, p2.position, SVector(rand(),0.0), @SVector(zeros(2)),
+        new_gas = gas_struct(length(particles)+1, p2.position, SVector(rand(),0.0,0.0), @SVector(zeros(3)),
                         grid_size/2, 0.1, 
                         0, 0, 
                         1, 1, 1, 1, 

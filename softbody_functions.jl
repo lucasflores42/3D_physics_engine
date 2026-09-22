@@ -55,8 +55,8 @@ function create_rope!(particles, softbodies, id, offset, n, stiffness, rest_leng
         p = solid_struct(
             length(particles)+1,
             offset .+ SVector(-k*rest_length, 0, 0),
-            @SVector(zeros(2)),
-            @SVector(zeros(2)),
+            @SVector(zeros(3)),
+            @SVector(zeros(3)),
             grid_size/2,
             1.0,
             0,

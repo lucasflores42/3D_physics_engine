@@ -12,7 +12,7 @@ function clamp_particles(particles)
             p.position[2] = grid_size/2
             p.velocity[2] = abs(p.velocity[2])  # Bounce back
         elseif p.position[2] > box_size_y - grid_size/2
-            p.position[2] = box_size - grid_size/2
+            p.position[2] = box_size_y - grid_size/2
             p.velocity[2] = -abs(p.velocity[2])  # Bounce back
         end
 

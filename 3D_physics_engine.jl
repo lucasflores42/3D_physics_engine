@@ -1,15 +1,15 @@
 #import Pkg
 #Pkg.add(["StaticArrays", "Plots", "LinearAlgebra", "GLMakie])
-using Plots, LinearAlgebra, StaticArrays #, GLMakie
+using LinearAlgebra, StaticArrays, Plots
 
 # -----------------------------------------------------------------------------
 #                           Parameters
 # ----------------------------------------------------------------------------- 
 # 256x256x256, total 16,777,216 voxels.
 const grid_size = 1.0
-const voxel_size_x = 100
-const voxel_size_y = 100 
-const voxel_size_z = 100 
+const voxel_size_x = 20
+const voxel_size_y = 20 
+const voxel_size_z = 20 
 const box_size_x = voxel_size_x * grid_size
 const box_size_y = voxel_size_y * grid_size
 const box_size_z = voxel_size_z * grid_size
@@ -74,9 +74,9 @@ function create_scene()
     # some liquid
     for i in 1:10
 
-        x = 325
-        y = 55 + 10*rand()
-        z = 55 + 10*rand()
+        x = box_size_x * rand()
+        y = box_size_y * rand()
+        z = box_size_z / 2
 
         p = liquid_struct(length(particles)+1, SVector(x,y,z), @SVector(zeros(3)), @SVector(zeros(3)),
                        grid_size/2, 0.1, 0, 0,
@@ -109,62 +109,70 @@ end
 
 # -----------------------------------------------------------------------------
 #                           Visualization
-# ----------------------------------------------------------------------------- 
+# -----------------------------------------------------------------------------
+function cube_geometry()
+    s = 0.5   # meio-lado do cubo unitário
+    xp = [-s,  s,  s, -s, -s,  s,  s, -s]
+    yp = [-s, -s,  s,  s, -s, -s,  s,  s]
+    zp = [-s, -s, -s, -s,  s,  s,  s,  s]
+
+    connections = [
+        (1,2), (2,3), (3,4), (4,1),   # base
+        (5,6), (6,7), (7,8), (8,5),   # topo
+        (1,5), (2,6), (3,7), (4,8),   # arestas verticais
+    ]
+    return xp, yp, zp, connections
+end 
+
 function visualization(particles, id_grid, step)
-
     material_grid = build_material_grid(particles, id_grid)
-
-    xs = Int[]
-    ys = Int[]
-    zs = Int[]
-    cs = Symbol[]
-
-    for x in 1:voxel_size_x
-        for y in 1:voxel_size_y
-            for z in 1:voxel_size_z
-                v = material_grid[x, y, z]
-                if v == 0
-                    continue
-                end
-
-                push!(xs, x)
-                push!(ys, y)
-                push!(zs, z)
-
-                color = if v == 1
-                    :gray
-                elseif v == 2
-                    :blue
-                elseif v == 3
-                    :orange
-                elseif v == 4
-                    :brown
-                elseif v == 5
-                    :lightblue
-                else
-                    :white
-                end
-
-                push!(cs, color)
-            end
-        end
-    end
-
-    plt = scatter3d(
-        xs, ys, zs;
-        markercolor = cs,
-        markersize = 1.5,
+    println("voxels não-vazios: ", count(!=(0), material_grid))
+    println("valores únicos: ", unique(material_grid))  
+    gr()
+    p = plot(;
+        legend = false,
         xlabel = "X", ylabel = "Y", zlabel = "Z",
-        title = "Time $(round(step, digits=2))s",
+        xticks = nothing, yticks = nothing, zticks = nothing,
+        title = "t = $(round(step, digits=2))s",
+        aspect_ratio = :equal,
+        camera = (30, 30),
         xlim = (0, voxel_size_x),
         ylim = (0, voxel_size_y),
         zlim = (0, voxel_size_z),
-        aspect_ratio = :equal,
-        camera = (30, 35),
-        legend = false
     )
 
-    return plt
+    xp, yp, zp, connections = cube_geometry()
+
+    color_map = Dict(
+        1 => :gray,
+        2 => :blue,
+        3 => :orange,
+        4 => :brown,
+        5 => :lightblue,
+    )
+
+    for i in 1:voxel_size_x, j in 1:voxel_size_y, k in 1:voxel_size_z
+        v = material_grid[i, j, k]
+        v == 0 && continue
+
+        color = get(color_map, v, :white)
+        alpha = 1.0
+
+        xs = xp .+ i
+        ys = yp .+ j
+        zs = zp .+ k
+
+        mesh3d!(p, xs, ys, zs;
+            connections = connections,
+            fc = color,
+            lc = nothing,
+            lw = 0.2,
+            fa = alpha,
+        )
+    end
+
+    display(p)
+    return p
 end
 
 # -----------------------------------------------------------------------------
@@ -186,10 +194,8 @@ function main()
         )
 
         if step % 10 == 0
-            render_time = @elapsed begin
-                plt = visualization(particles, id_grid, t)
-                display(plt)
-            end
+            render_time = @elapsed visualization(particles, id_grid, t)
+
             println("t = $(round(t, digits=2))s | step: $(round(step_time * 1000, digits=2))ms | render: $(round(render_time * 1000, digits=2))ms")
         else
             println("t = $(round(t, digits=2))s | step: $(round(step_time * 1000, digits=2))ms")

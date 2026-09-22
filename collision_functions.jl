@@ -1,15 +1,13 @@
 # -----------------------------------------------------------------------------
 #                           Parameters
 # -----------------------------------------------------------------------------
-const restitution = [0.5, 0.5, 0.3]
+const restitution = SVector(0.5, 0.5, 0.3)
 const restitution_angular = 0.5
 const collision_min_distance = grid_size #* sqrt(2)
 const max_velocity = 50.0
 const max_angular_velocity = 20.0
 const friction_coef = 0.3
 
-include("rigidbody_functions.jl")
-include("material_functions.jl")
 
 # -----------------------------------------------------------------------------
 #                           Calculate all collisions
@@ -128,7 +126,8 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
         return   # same softbody, handled by its own constraints
     end
 
-    material_transformation(p1,p2)
+    material_transformation(p1, p2, particles, gas, id_grid, cell_of_particle)
+
 
     if p1.material == "liquid" && p2.material == "gas"
         return
@@ -166,8 +165,8 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
         rb_contact_count[rb1.id] += 1
         rb_contact_count[rb2.id] += 1
    
-        dv1 = (1 + restitution) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1 - x2) / r_sq
-        dv2 = - (1 + restitution) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2 - x1) / r_sq
+        dv1 = (1 .+ restitution) .* m2 / (m1 + m2) .* dot(v1 - v2, x1 - x2) .* (x1 - x2) / r_sq
+        dv2 = - (1 .+ restitution) .* m1 / (m1 + m2) .* dot(v2 - v1, x2 - x1) .* (x2 - x1) / r_sq
 
         shift1 = overlap * normal * (m2 / total_mass)
         shift2 = overlap * normal * (m1 / total_mass)
@@ -221,8 +220,8 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
 
         rb_contact_count[rb1.id] += 1
 
-        dv1 = (1 + restitution) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1 - x2) / r_sq
-        dv2 = - (1 + restitution) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2 - x1) / r_sq
+        dv1 = (1 .+ restitution) .* m2 / (m1 + m2) .* dot(v1 - v2, x1 - x2) .* (x1 - x2) / r_sq
+        dv2 = - (1 .+ restitution) .* m1 / (m1 + m2) .* dot(v2 - v1, x2 - x1) .* (x2 - x1) / r_sq
 
         shift = overlap * normal * (m2 / total_mass)
         Δp1 = m1 * dv1
@@ -281,8 +280,8 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
 
         rb_contact_count[rb2.id] += 1
 
-        dv1 = (1 + restitution) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1 - x2) / r_sq
-        dv2 = - (1 + restitution) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2 - x1) / r_sq
+        dv1 = (1 .+ restitution) .* m2 / (m1 + m2) .* dot(v1 - v2, x1 - x2) .* (x1 - x2) / r_sq
+        dv2 = - (1 .+ restitution) .* m1 / (m1 + m2) .* dot(v2 - v1, x2 - x1) .* (x2 - x1) / r_sq
 
         if p1.active == 1
             p1.position = p1.position + overlap * normal * (m2 / total_mass)
@@ -336,8 +335,8 @@ function resolve_pair!(particles, rigidbodies, powder, liquid, gas, id_grid, cel
         m1, m2 = p1.mass, p2.mass
         total_mass = m1 + m2
 
-        dv1 = (1 + restitution) * m2 / (m1 + m2) * dot(v1 - v2, x1 - x2) * (x1 - x2) / r_sq
-        dv2 = - (1 + restitution) * m1 / (m1 + m2) * dot(v2 - v1, x2 - x1) * (x2 - x1) / r_sq
+        dv1 = (1 .+ restitution) .* m2 / (m1 + m2) .* dot(v1 - v2, x1 - x2) .* (x1 - x2) / r_sq
+        dv2 = - (1 .+ restitution) .* m1 / (m1 + m2) .* dot(v2 - v1, x2 - x1) .* (x2 - x1) / r_sq
 
         if p1.active == 1
             pos_correction[i] = pos_correction[i] + overlap * normal * (m2 / total_mass)

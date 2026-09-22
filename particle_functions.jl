@@ -3,7 +3,6 @@
 # ----------------------------------------------------------------------------- 
 const gravity_coef = 0.1
 const colision_restitution_coefficient = 0.5
-const collision_min_distance = grid_size #* sqrt(2)
 
 # -----------------------------------------------------------------------------
 #                           Particles physics
@@ -114,27 +113,30 @@ function particle_physics(particles, liquid, gas, powder, solid, id_grid, cell_o
             for di in -sph_cell_range:sph_cell_range
                 for dj in -sph_cell_range:sph_cell_range
                     for dk in -sph_cell_range:sph_cell_range
+                        
                         ni, nj, nk = px + di, py + dj, pz + dk
+                        
                         if ni < 1 || ni > voxel_size_x || nj < 1 || nj > voxel_size_y || nk < 1 || nk > voxel_size_z || !haskey(id_grid, (ni, nj, nk))
                             continue
                         end
+
                         for j in id_grid[(ni, nj, nk)]
+
                             p2 = particles[j]
                             if p2.material != "liquid" ||  p2 === p
                                 continue
                             end
+                            r_vec = p.position - p2.position
+                            r = norm(r_vec)
+                        
+                            if r > 2*smoothing_length || r == 0
+                                continue
+                            end
+
+                            grad_pressure += pressure_gradient(p, p2, r, r_vec)
+                            laplacian_velocity += viscosity_laplacian(p, p2, r, r_vec)
+                            #F_surface += surface_tension_force(p, p2, r, r_vec)
                         end
-
-                        r_vec = p.position - p2.position
-                        r = norm(r_vec)
-
-                        if r > 2*smoothing_length || r == 0
-                            continue
-                        end
-
-                        grad_pressure += pressure_gradient(p, p2, r, r_vec)
-                        laplacian_velocity += viscosity_laplacian(p, p2, r, r_vec)
-                        #F_surface += surface_tension_force(p, p2, r, r_vec)
                     end
                 end
             end
