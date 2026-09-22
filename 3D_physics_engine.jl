@@ -111,24 +111,27 @@ end
 #                           Visualization
 # -----------------------------------------------------------------------------
 function cube_geometry()
-    s = 0.5   # meio-lado do cubo unitário
-    xp = [-s,  s,  s, -s, -s,  s,  s, -s]
-    yp = [-s, -s,  s,  s, -s, -s,  s,  s]
-    zp = [-s, -s, -s, -s,  s,  s,  s,  s]
+    s = 0.5
+    xp = [-s,  s,  s, -s,  -s,   s,   s, -s]
+    yp = [-s, -s,  s,  s,  -s,  -s,   s,  s]
+    zp = [-s, -s, -s, -s,   s,   s,   s,  s]
 
     connections = [
-        (1,2), (2,3), (3,4), (4,1),   # base
-        (5,6), (6,7), (7,8), (8,5),   # topo
-        (1,5), (2,6), (3,7), (4,8),   # arestas verticais
+        (1,2,3), (1,3,4),   # base (z-)
+        (5,6,7), (5,7,8),   # topo (z+)
+        (1,2,6), (1,6,5),   # lado y-
+        (2,3,7), (2,7,6),   # lado x+
+        (3,4,8), (3,8,7),   # lado y+
+        (4,1,5), (4,5,8),   # lado x-
     ]
     return xp, yp, zp, connections
-end 
+end
 
 function visualization(particles, id_grid, step)
-    material_grid = build_material_grid(particles, id_grid)
-    println("voxels não-vazios: ", count(!=(0), material_grid))
-    println("valores únicos: ", unique(material_grid))  
+
+    material_grid = build_material_grid(particles, id_grid) 
     gr()
+    
     p = plot(;
         legend = false,
         xlabel = "X", ylabel = "Y", zlabel = "Z",
